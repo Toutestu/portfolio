@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swiper Example</title>
+    <link rel="stylesheet" href="src/swiper-bundle.min.css">
+    <link rel="stylesheet" href="src/mycss1.css?t=13">
+    <script src="src/swiper-bundle.min.js"></script>
+</head>
+<body>
+    <div class="swiper-container">
+        <div class="swiper-wrapper">
+            <!-- スライド1 -->
+            <div class="swiper-slide" id="slide1">スライド1の内容</div>
+            <!-- スライド2 -->
+            <div class="swiper-slide" id="slide2">スライド2の内容</div>
+        </div>
+        <div class="swiper-pagination"></div>
+    </div>
+
+    <script>
+        // ランダムな10文字の文字列を生成
+        function generateRandomString(length) {
+            const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let result = '';
+            for (let i = 0; i < length; i++) {
+                result += characters.charAt(Math.floor(Math.random() * characters.length));
+            }
+            return result;
+        }
+
+        // ページ読み込み時にランダム文字列を生成
+        const randomString = generateRandomString(10);
+
+        // ページ読み込み時にviewステータスを送信
+        fetch('/lp_measurement.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                randomString: randomString,
+                slideID: 'slide1',
+                startTime: new Date().toISOString().split('.')[0] + 'Z', // ミリ秒を削除
+                status: 'view',
+                referrer: document.referrer || '' // referrerが空の場合は空文字列を送信
+            })
+        }).then(response => {
+            if (!response.ok) {
+                throw new Error('サーバーエラー');
+            }
+            return response.json();
+        }).then(() => {
+            // viewステータス送信後にslideStartTimeを更新
+            slideStartTime = new Date();
+            slideStartTime.setMilliseconds(0); // ミリ秒を切り捨て
+        }).catch(error => {
+            console.error('viewステータス送信エラー:', error);
+        });
+
+        let slideStartTime = new Date(); // 初期スライドの開始時間を記録
+        let currentSlideID = 'slide1'; // 初期スライドIDを設定
+        let isConversionSent = false; // conversion ステータス送信フラグ
+        let hiddenStartTime = null; // hidden状態の開始時間
+
+        // Swiperのスライダー設定
+        const swiper = new Swiper('.swiper-container', {
+            direction: 'vertical',  // 垂直スクロール
+            loop: false,            // ループしない
+            threshold: 0,           // これ以上小さくはできない
+            touchRatio: 2,          // スワイプの影響を2倍にする
+            slidesPerGroup: 1,      // スワイプ1回で1スライドだけ移動
+            longSwipesRatio: 0.1,   // 10% スワイプすれば次のスライドへ
+            speed: 800,             // スライドのスピード
+            mousewheel: {
+                invert: false,      // マウスホイールのスクロール方向
+                forceToAxis: true   // Y軸に制限
+            },
+            pagination: {
+                el: '.swiper-pagination',
+            }
+        });
+
+        // ページ離脱時にスライドデータを送信
+        window.addEventListener('beforeunload', function () {
+            if (isConversionSent) return; // conversion ステータス送信済みの場合は leave を送信しない
+            if (currentSlideID && slideStartTime) {
+                const slideEndTime = new Date();
+                slideEndTime.setMilliseconds(0); // ミリ秒を切り捨て
+
+                // durationを1秒単位で計算（小数点以下を切り捨て）
+                const duration = Math.floor((slideEndTime - slideStartTime) / 1000);
+
+                navigator.sendBeacon('/lp_measurement.php', JSON.stringify({
+                    randomString: randomString,
+                    slideID: currentSlideID,
+                    startTime: slideStartTime.toISOString(),
+                    endTime: slideEndTime.toISOString(),
+                    duration: duration, // 修正されたduration
+                    status: 'leave',
+                }));
+            }
+        });
+
+        // サーバーにデータを送信する関数
+        function sendData(data) {
+            fetch('/lp_measurement.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            }).catch(error => {
+                console.error('データ送信エラー:', error);
+            });
+        }
+    </script>
+</body>
+</html>
